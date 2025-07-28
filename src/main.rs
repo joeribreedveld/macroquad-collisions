@@ -11,6 +11,7 @@ struct Player;
 
 struct Collider(Vec2);
 
+#[derive(Debug)]
 struct PreviousPosition(Vec2);
 
 // Window config
@@ -127,24 +128,26 @@ fn collision(world: &mut World) {
 
         // Check if any entity overlaps one another
         if rect1.overlaps(&rect2) {
-            println!("Collision detected");
+            println!("{:?}", prev_pos);
 
             // Check which axis has biggest difference
-            if pos.0.x - prev_pos.0.x > pos.0.y - prev_pos.0.y {
-                if prev_pos.0.x < pos.0.x {
-                    // Left
-                    pos.0.x = rect2.left() - DRAW_SIZE / 2.0 - extra;
-                } else {
-                    // Right
-                    pos.0.x = rect2.right() + DRAW_SIZE / 2.0 + extra;
-                }
-            } else {
+            if (prev_pos.0.x - pos.0.x).abs() < (prev_pos.0.y - pos.0.y).abs() {
+                // y-axis has biggest difference so move up or down
                 if prev_pos.0.y < pos.0.y {
                     // Top
                     pos.0.y = rect2.top() - DRAW_SIZE / 2.0 - extra;
                 } else {
                     // Bottom
                     pos.0.y = rect2.bottom() + DRAW_SIZE / 2.0 + extra;
+                }
+            } else {
+                // x-axis has biggest difference so move left or right
+                if prev_pos.0.x < pos.0.x {
+                    // Left
+                    pos.0.x = rect2.left() - DRAW_SIZE / 2.0 - extra;
+                } else {
+                    // Right
+                    pos.0.x = rect2.right() + DRAW_SIZE / 2.0 + extra;
                 }
             }
         }
