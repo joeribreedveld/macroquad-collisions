@@ -42,9 +42,11 @@ async fn main() {
     ));
 
     // Wall
-    let wall_pos = Vec2::new(screen_center.x + 256.0, screen_center.y);
+    let wall1_pos = Vec2::new(screen_center.x + 256.0, screen_center.y);
+    let wall2_pos = Vec2::new(screen_center.x + 256.0, screen_center.y + DRAW_SIZE);
 
-    world.spawn((Position(wall_pos), Collider(entity_size)));
+    world.spawn((Position(wall1_pos), Collider(entity_size)));
+    world.spawn((Position(wall2_pos), Collider(entity_size)));
 
     // Game loop
     loop {
@@ -101,11 +103,11 @@ fn movement(world: &mut World) {
 
 // Collision system
 fn collision(world: &mut World) {
-    let mut rect2 = Rect::default();
+    let mut walls: Vec<Rect> = Vec::new();
 
     let extra = 0.0001;
 
-    // rect2 (wall)
+    // Collect walls
     for (_, (pos, collider)) in world
         .query::<(&Position, &Collider)>()
         .without::<&Player>()
@@ -114,7 +116,9 @@ fn collision(world: &mut World) {
         /* Revert origin to rect standard */
         let top_left_pos = pos.0 - DRAW_SIZE / 2.0;
 
-        rect2 = Rect::new(top_left_pos.x, top_left_pos.y, collider.0.x, collider.0.y);
+        let rect = Rect::new(top_left_pos.x, top_left_pos.y, collider.0.x, collider.0.y);
+
+        walls.push(rect);
     }
 
     // Check which one of the entities is movable
@@ -124,30 +128,28 @@ fn collision(world: &mut World) {
     {
         let top_left_pos = pos.0 - DRAW_SIZE / 2.0;
 
-        let rect1 = Rect::new(top_left_pos.x, top_left_pos.y, collider.0.x, collider.0.y);
+        let player_rect = Rect::new(top_left_pos.x, top_left_pos.y, collider.0.x, collider.0.y);
 
         // Check if any entity overlaps one another
-        if rect1.overlaps(&rect2) {
-            println!("{:?}", prev_pos);
-
-            // Check which axis has biggest difference
-            if (prev_pos.0.x - pos.0.x).abs() < (prev_pos.0.y - pos.0.y).abs() {
-                // y-axis has biggest difference so move up or down
-                if prev_pos.0.y < pos.0.y {
-                    // Top
-                    pos.0.y = rect2.top() - DRAW_SIZE / 2.0 - extra;
+        for wall_rect in walls.iter() {
+            if player_rect.overlaps(wall_rect) {
+                // Check which axis overlapped in prev_pos
+                if (prev_pos.0.x - wall_rect.center().x).abs() < DRAW_SIZE {
+                    if prev_pos.0.y < wall_rect.top() {
+                        // Top
+                        pos.0.y = wall_rect.top() - DRAW_SIZE / 2.0 - extra;
+                    } else {
+                        // Bottom
+                        pos.0.y = wall_rect.bottom() + DRAW_SIZE / 2.0 + extra;
+                    }
                 } else {
-                    // Bottom
-                    pos.0.y = rect2.bottom() + DRAW_SIZE / 2.0 + extra;
-                }
-            } else {
-                // x-axis has biggest difference so move left or right
-                if prev_pos.0.x < pos.0.x {
-                    // Left
-                    pos.0.x = rect2.left() - DRAW_SIZE / 2.0 - extra;
-                } else {
-                    // Right
-                    pos.0.x = rect2.right() + DRAW_SIZE / 2.0 + extra;
+                    if prev_pos.0.x < wall_rect.left() {
+                        // Left
+                        pos.0.x = wall_rect.left() - DRAW_SIZE / 2.0 - extra;
+                    } else {
+                        // Right
+                        pos.0.x = wall_rect.right() + DRAW_SIZE / 2.0 + extra;
+                    }
                 }
             }
         }
