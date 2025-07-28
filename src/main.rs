@@ -1,8 +1,8 @@
-use hecs::World;
+use hecs::{Entity, World};
 use macroquad::prelude::*;
 
 // Constants
-const DRAW_SIZE: f32 = 64.0;
+const DRAW_SIZE: f32 = 32.0;
 
 const PLAYER_SPEED: f32 = 300.0;
 
@@ -39,8 +39,14 @@ async fn main() {
 
     let entity_size = Vec2::new(DRAW_SIZE, DRAW_SIZE);
 
+    // Camera
+    let mut camera = Camera2D {
+        zoom: Vec2::new(1.0 / screen_size.x * 2.0, 1.0 / screen_size.y * 2.0),
+        ..Default::default()
+    };
+
     // Player
-    world.spawn((
+    let player_entity = world.spawn((
         Position(screen_center),
         Player,
         Collider(entity_size),
@@ -69,14 +75,28 @@ async fn main() {
 
         movement(&mut world, delta_time);
 
-        mouse_movement(&mut world);
+        // Update camera for precise player pos
+        update_camera(&mut world, player_entity, &mut camera);
+
+        mouse_movement(&mut world, &camera);
 
         collision(&mut world);
+
+        // Update camera target
+        update_camera(&mut world, player_entity, &mut camera);
 
         render(&mut world);
 
         next_frame().await
     }
+}
+
+fn update_camera(world: &mut World, player_entity: Entity, camera: &mut Camera2D) {
+    let player_pos = world.get::<&Position>(player_entity).unwrap();
+
+    camera.target = player_pos.0;
+
+    set_camera(camera);
 }
 
 // Render system
@@ -133,16 +153,23 @@ fn movement(world: &mut World, delta_time: f32) {
 }
 
 // Movement system
-fn mouse_movement(world: &mut World) {
+fn mouse_movement(world: &mut World, camera: &Camera2D) {
     for (_, (pos, prev_pos)) in world
         .query_mut::<(&mut Position, &mut PreviousPosition)>()
         .with::<&Player>()
     {
         /* Show movement guide */
-        let mouse_pos = Vec2::from(mouse_position());
+        let mouse_pos = camera.screen_to_world(Vec2::from(mouse_position()));
         let mouse_draw_pos = mouse_pos - DRAW_SIZE / 2.0;
 
-        draw_line(pos.0.x, pos.0.y, mouse_pos.x, mouse_pos.y, 2.0, DARKGRAY);
+        draw_line(
+            pos.0.x.round(),
+            pos.0.y.round(),
+            mouse_pos.x,
+            mouse_pos.y,
+            2.0,
+            DARKGRAY,
+        );
         draw_rectangle_lines(
             mouse_draw_pos.x,
             mouse_draw_pos.y,
