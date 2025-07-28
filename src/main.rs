@@ -4,10 +4,16 @@ use macroquad::prelude::*;
 // Constants
 const DRAW_SIZE: f32 = 64.0;
 
+const PLAYER_SPEED: f32 = 300.0;
+
 // Components
 struct Position(Vec2);
 
+struct Velocity(Vec2);
+
 struct Player;
+
+struct Speed(f32);
 
 struct Collider(Vec2);
 
@@ -39,20 +45,31 @@ async fn main() {
         Player,
         Collider(entity_size),
         PreviousPosition(Vec2::ZERO),
+        Velocity(Vec2::ZERO),
+        Speed(PLAYER_SPEED),
+        WHITE,
     ));
 
     // Wall
-    let wall1_pos = Vec2::new(screen_center.x + 256.0, screen_center.y);
-    let wall2_pos = Vec2::new(screen_center.x + 256.0, screen_center.y + DRAW_SIZE);
+    let wall_start_pos = Vec2::new(screen_center.x + 128.0, screen_center.y);
 
-    world.spawn((Position(wall1_pos), Collider(entity_size)));
-    world.spawn((Position(wall2_pos), Collider(entity_size)));
+    for i in -2..4 {
+        let wall_pos = Vec2::new(wall_start_pos.x, wall_start_pos.y + DRAW_SIZE * i as f32);
+
+        world.spawn((Position(wall_pos), Collider(entity_size), GRAY));
+    }
 
     // Game loop
     loop {
+        let delta_time = get_frame_time();
+
         clear_background(BLACK);
 
-        movement(&mut world);
+        input(&mut world);
+
+        movement(&mut world, delta_time);
+
+        mouse_movement(&mut world);
 
         collision(&mut world);
 
@@ -64,15 +81,59 @@ async fn main() {
 
 // Render system
 fn render(world: &mut World) {
-    for (_, pos) in world.query::<&Position>().iter() {
+    for (_, (pos, color)) in world.query::<(&Position, &Color)>().iter() {
         let draw_pos = pos.0 - DRAW_SIZE / 2.0;
 
-        draw_rectangle(draw_pos.x, draw_pos.y, DRAW_SIZE, DRAW_SIZE, WHITE);
+        draw_rectangle(
+            draw_pos.x,
+            draw_pos.y,
+            DRAW_SIZE,
+            DRAW_SIZE,
+            color.to_owned(),
+        );
+    }
+}
+
+fn input(world: &mut World) {
+    for (_, (vel, speed)) in world
+        .query_mut::<(&mut Velocity, &Speed)>()
+        .with::<&Player>()
+    {
+        let mut dir = Vec2::ZERO;
+
+        if is_key_down(KeyCode::W) {
+            dir.y -= 1.0;
+        }
+
+        if is_key_down(KeyCode::A) {
+            dir.x -= 1.0;
+        }
+
+        if is_key_down(KeyCode::S) {
+            dir.y += 1.0;
+        }
+
+        if is_key_down(KeyCode::D) {
+            dir.x += 1.0;
+        }
+
+        vel.0 = dir.normalize_or_zero() * speed.0;
+    }
+}
+
+fn movement(world: &mut World, delta_time: f32) {
+    for (_, (pos, vel, prev_pos)) in world
+        .query_mut::<(&mut Position, &Velocity, &mut PreviousPosition)>()
+        .with::<&Player>()
+    {
+        prev_pos.0 = pos.0;
+
+        pos.0 += vel.0 * delta_time;
     }
 }
 
 // Movement system
-fn movement(world: &mut World) {
+fn mouse_movement(world: &mut World) {
     for (_, (pos, prev_pos)) in world
         .query_mut::<(&mut Position, &mut PreviousPosition)>()
         .with::<&Player>()
