@@ -85,7 +85,9 @@ async fn main() {
 
         mouse_movement(&mut world);
 
-        collision(&mut world);
+        for _ in 0..8 {
+            collision(&mut world);
+        }
 
         render(&mut world);
 
@@ -314,28 +316,32 @@ pub fn collision(world: &mut World) {
             }
 
             if intersection.w != 0.0 && intersection.h != 0.0 {
-                println!("x1: {}, x2: {},", prev_pos.0.x, other_prev_pos.0.x);
+                println!("y1: {}, y2: {},", prev_pos.0.y, other_prev_pos.0.y);
 
                 // Check which axis overlaps
-                if (prev_pos.0.x - other_prev_pos.0.x).abs() < DRAW_SIZE {
+                if (prev_pos.0.x - other_prev_pos.0.x).abs().round() < DRAW_SIZE {
                     println!("dynamic vertical collision");
 
                     // Vertical collision
                     if prev_pos.0.y < other_prev_pos.0.y {
+                        // Top
                         mut_pos.0.y -= intersection.h / 2.0;
                         other_mut_pos.0.y += intersection.h / 2.0;
                     } else {
+                        // Bottom
                         mut_pos.0.y += intersection.h / 2.0;
                         other_mut_pos.0.y -= intersection.h / 2.0;
                     }
-                } else if (prev_pos.0.y - other_prev_pos.0.y).abs() < DRAW_SIZE {
+                } else if (prev_pos.0.y - other_prev_pos.0.y).abs().round() < DRAW_SIZE {
                     println!("dynamic horizontal collision");
 
                     // Horizontal collision
                     if prev_pos.0.x < other_prev_pos.0.x {
+                        // Left
                         mut_pos.0.x -= intersection.w / 2.0;
                         other_mut_pos.0.x += intersection.w / 2.0;
                     } else {
+                        // Right
                         mut_pos.0.x += intersection.w / 2.0;
                         other_mut_pos.0.x -= intersection.w / 2.0;
                     }
