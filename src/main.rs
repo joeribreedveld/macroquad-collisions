@@ -1,4 +1,4 @@
-use hecs::World;
+use hecs::{Entity, World};
 use macroquad::prelude::*;
 
 // Constants
@@ -7,6 +7,8 @@ const DRAW_SIZE: f32 = 64.0;
 const PLAYER_SPEED: f32 = 300.0;
 
 // Components
+
+#[derive(Clone)]
 struct Position(Vec2);
 
 struct Velocity(Vec2);
@@ -15,9 +17,10 @@ struct Player;
 
 struct Speed(f32);
 
+#[derive(Clone)]
 struct Collider(Vec2);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct PreviousPosition(Vec2);
 
 // Window config
@@ -37,17 +40,24 @@ async fn main() {
     let screen_size = Vec2::new(screen_width(), screen_height());
     let screen_center = screen_size / 2.0;
 
-    let entity_size = Vec2::new(DRAW_SIZE, DRAW_SIZE);
-
     // Player
     world.spawn((
         Position(screen_center),
         Player,
-        Collider(entity_size),
-        PreviousPosition(Vec2::ZERO),
+        Collider(vec2(DRAW_SIZE, DRAW_SIZE)),
+        PreviousPosition(screen_center),
         Velocity(Vec2::ZERO),
         Speed(PLAYER_SPEED),
         WHITE,
+    ));
+
+    world.spawn((
+        Position(screen_center - 100.0),
+        Collider(vec2(DRAW_SIZE, DRAW_SIZE)),
+        PreviousPosition(screen_center - 100.0),
+        Velocity(Vec2::ZERO),
+        Speed(PLAYER_SPEED),
+        RED,
     ));
 
     // Wall
@@ -56,7 +66,11 @@ async fn main() {
     for i in -2..4 {
         let wall_pos = Vec2::new(wall_start_pos.x, wall_start_pos.y + DRAW_SIZE * i as f32);
 
-        world.spawn((Position(wall_pos), Collider(entity_size), GRAY));
+        world.spawn((
+            Position(wall_pos),
+            Collider(vec2(DRAW_SIZE, DRAW_SIZE)),
+            GRAY,
+        ));
     }
 
     // Game loop
@@ -122,9 +136,8 @@ fn input(world: &mut World) {
 }
 
 fn movement(world: &mut World, delta_time: f32) {
-    for (_, (pos, vel, prev_pos)) in world
-        .query_mut::<(&mut Position, &Velocity, &mut PreviousPosition)>()
-        .with::<&Player>()
+    for (_, (pos, vel, prev_pos)) in
+        world.query_mut::<(&mut Position, &Velocity, &mut PreviousPosition)>()
     {
         prev_pos.0 = pos.0;
 
@@ -163,54 +176,171 @@ fn mouse_movement(world: &mut World) {
 }
 
 // Collision system
-fn collision(world: &mut World) {
-    let mut walls: Vec<Rect> = Vec::new();
+struct Static {
+    pos: Position,
+    collider: Collider,
+}
 
-    let extra = 0.0001;
+struct Dynamic {
+    entity: Entity,
+    collider: Collider,
+    prev_pos: PreviousPosition,
+}
 
-    // Collect walls
+pub fn collision(world: &mut World) {
+    let mut static_entities: Vec<Static> = Vec::new();
+    let mut dynamic_entities: Vec<Dynamic> = Vec::new();
+
+    // Collect static entities
     for (_, (pos, collider)) in world
         .query::<(&Position, &Collider)>()
-        .without::<&Player>()
+        .without::<&Velocity>()
         .iter()
     {
-        /* Revert origin to rect standard */
-        let top_left_pos = pos.0 - DRAW_SIZE / 2.0;
-
-        let rect = Rect::new(top_left_pos.x, top_left_pos.y, collider.0.x, collider.0.y);
-
-        walls.push(rect);
+        static_entities.push(Static {
+            pos: pos.clone(),
+            collider: collider.clone(),
+        });
     }
 
-    // Check which one of the entities is movable
-    for (_, (pos, collider, prev_pos)) in world
-        .query_mut::<(&mut Position, &Collider, &mut PreviousPosition)>()
-        .with::<&Player>()
+    // Collect dynamic entities
+    for (entity, (collider, prev_pos)) in world
+        .query::<(&Collider, &PreviousPosition)>()
+        .with::<&Velocity>()
+        .iter()
     {
-        let top_left_pos = pos.0 - DRAW_SIZE / 2.0;
+        dynamic_entities.push(Dynamic {
+            entity,
+            collider: collider.clone(),
+            prev_pos: prev_pos.clone(),
+        });
+    }
 
-        let player_rect = Rect::new(top_left_pos.x, top_left_pos.y, collider.0.x, collider.0.y);
+    // Loop over all dynamic entities
+    for i in 0..dynamic_entities.len() {
+        let mut mut_pos = world
+            .get::<&mut Position>(dynamic_entities[i].entity)
+            .unwrap();
 
-        // Check if any entity overlaps one another
-        for wall_rect in walls.iter() {
-            if player_rect.overlaps(wall_rect) {
+        let prev_pos = world
+            .get::<&mut PreviousPosition>(dynamic_entities[i].entity)
+            .unwrap();
+
+        // Set correct origin and init rect
+        let top_left_pos = mut_pos.0 - DRAW_SIZE / 2.0;
+
+        let dynamic_rect = Rect::new(
+            top_left_pos.x,
+            top_left_pos.y,
+            dynamic_entities[i].collider.0.x,
+            dynamic_entities[i].collider.0.y,
+        );
+
+        // Dynamic vs static
+        for static_entity in &static_entities {
+            // Set correct origin and init rect
+            let top_left_pos = static_entity.pos.0 - DRAW_SIZE / 2.0;
+
+            let static_rect = Rect::new(
+                top_left_pos.x,
+                top_left_pos.y,
+                static_entity.collider.0.x,
+                static_entity.collider.0.y,
+            );
+
+            let some_intersection = dynamic_rect.intersect(static_rect);
+
+            let mut intersection = Rect::default();
+
+            if some_intersection.is_some() {
+                intersection = some_intersection.unwrap();
+            }
+
+            if intersection.w != 0.0 && intersection.h != 0.0 {
                 // Check which axis overlapped in prev_pos
-                if (prev_pos.0.x - wall_rect.center().x).abs() < DRAW_SIZE {
-                    if prev_pos.0.y < wall_rect.top() {
+                if (dynamic_entities[i].prev_pos.0.x - static_rect.center().x).abs() < DRAW_SIZE {
+                    println!("static vertical collision");
+
+                    if dynamic_entities[i].prev_pos.0.y < static_rect.top() {
                         // Top
-                        pos.0.y = wall_rect.top() - DRAW_SIZE / 2.0 - extra;
+                        mut_pos.0.y = static_rect.top() - DRAW_SIZE / 2.0;
                     } else {
                         // Bottom
-                        pos.0.y = wall_rect.bottom() + DRAW_SIZE / 2.0 + extra;
+                        mut_pos.0.y = static_rect.bottom() + DRAW_SIZE / 2.0;
                     }
-                } else {
-                    if prev_pos.0.x < wall_rect.left() {
+                } else if (dynamic_entities[i].prev_pos.0.y - static_rect.center().y).abs()
+                    < DRAW_SIZE
+                {
+                    println!("static horizontal collision");
+
+                    if dynamic_entities[i].prev_pos.0.x < static_rect.left() {
                         // Left
-                        pos.0.x = wall_rect.left() - DRAW_SIZE / 2.0 - extra;
+                        mut_pos.0.x = static_rect.left() - DRAW_SIZE / 2.0;
                     } else {
                         // Right
-                        pos.0.x = wall_rect.right() + DRAW_SIZE / 2.0 + extra;
+                        mut_pos.0.x = static_rect.right() + DRAW_SIZE / 2.0;
                     }
+                } else {
+                    println!("static diagnal collision");
+                }
+            }
+        }
+
+        // Dynamic vs dynamic
+        for j in i + 1..dynamic_entities.len() {
+            let mut other_mut_pos = world
+                .get::<&mut Position>(dynamic_entities[j].entity)
+                .unwrap();
+
+            let other_prev_pos = world
+                .get::<&mut PreviousPosition>(dynamic_entities[j].entity)
+                .unwrap();
+
+            let other_top_left_pos = other_mut_pos.0 - DRAW_SIZE / 2.0;
+
+            let other_dynamic_rect = Rect::new(
+                other_top_left_pos.x,
+                other_top_left_pos.y,
+                dynamic_entities[j].collider.0.x,
+                dynamic_entities[j].collider.0.y,
+            );
+
+            let some_intersection = dynamic_rect.intersect(other_dynamic_rect);
+
+            let mut intersection = Rect::default();
+
+            if some_intersection.is_some() {
+                intersection = some_intersection.unwrap();
+            }
+
+            if intersection.w != 0.0 && intersection.h != 0.0 {
+                println!("x1: {}, x2: {},", prev_pos.0.x, other_prev_pos.0.x);
+
+                // Check which axis overlaps
+                if (prev_pos.0.x - other_prev_pos.0.x).abs() < DRAW_SIZE {
+                    println!("dynamic vertical collision");
+
+                    // Vertical collision
+                    if prev_pos.0.y < other_prev_pos.0.y {
+                        mut_pos.0.y -= intersection.h / 2.0;
+                        other_mut_pos.0.y += intersection.h / 2.0;
+                    } else {
+                        mut_pos.0.y += intersection.h / 2.0;
+                        other_mut_pos.0.y -= intersection.h / 2.0;
+                    }
+                } else if (prev_pos.0.y - other_prev_pos.0.y).abs() < DRAW_SIZE {
+                    println!("dynamic horizontal collision");
+
+                    // Horizontal collision
+                    if prev_pos.0.x < other_prev_pos.0.x {
+                        mut_pos.0.x -= intersection.w / 2.0;
+                        other_mut_pos.0.x += intersection.w / 2.0;
+                    } else {
+                        mut_pos.0.x += intersection.w / 2.0;
+                        other_mut_pos.0.x -= intersection.w / 2.0;
+                    }
+                } else {
+                    println!("dynamic diagnal collision");
                 }
             }
         }
