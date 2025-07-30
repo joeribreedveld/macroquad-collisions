@@ -270,9 +270,7 @@ pub fn collision(world: &mut World) {
                         // Bottom
                         mut_pos.0.y = static_rect.bottom() + DRAW_SIZE / 2.0;
                     }
-                } else if (dynamic_entities[i].prev_pos.0.y - static_rect.center().y).abs()
-                    < DRAW_SIZE
-                {
+                } else {
                     println!("static horizontal collision");
 
                     if dynamic_entities[i].prev_pos.0.x < static_rect.left() {
@@ -282,8 +280,6 @@ pub fn collision(world: &mut World) {
                         // Right
                         mut_pos.0.x = static_rect.right() + DRAW_SIZE / 2.0;
                     }
-                } else {
-                    println!("static diagnal collision");
                 }
             }
         }
@@ -332,7 +328,7 @@ pub fn collision(world: &mut World) {
                         mut_pos.0.y += intersection.h / 2.0;
                         other_mut_pos.0.y -= intersection.h / 2.0;
                     }
-                } else if (prev_pos.0.y - other_prev_pos.0.y).abs().round() < DRAW_SIZE {
+                } else {
                     println!("dynamic horizontal collision");
 
                     // Horizontal collision
@@ -345,8 +341,6 @@ pub fn collision(world: &mut World) {
                         mut_pos.0.x += intersection.w / 2.0;
                         other_mut_pos.0.x -= intersection.w / 2.0;
                     }
-                } else {
-                    println!("dynamic diagnal collision");
                 }
             }
         }
